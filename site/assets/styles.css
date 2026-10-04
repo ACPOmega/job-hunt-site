@@ -65,3 +65,12 @@ th.sortable:hover{color:var(--text);background:var(--panel2)}
   .source-toolbar button{width:100%}
   th.sortable{padding-right:16px}
 }
+
+/* application materials */
+.material-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.material-card{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:12px}
+.material-card h3{margin:3px 0 6px;font-size:14px}.material-card p{margin:3px 0;color:var(--muted);font-size:10px;line-height:1.45}
+.materials-detail{border-top:1px solid var(--line);padding-top:10px}
+.material-detail-row{display:flex;justify-content:space-between;gap:12px;padding:5px 0;font-size:11px}
+.material-detail-row span{color:var(--muted)}.material-detail-row b{text-align:right;color:var(--text)}
+@media(max-width:720px){.material-grid{grid-template-columns:1fr}}
