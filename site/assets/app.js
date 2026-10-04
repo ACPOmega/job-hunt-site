@@ -2,7 +2,69 @@
 const ENC_URL='data/job-data.enc.json';
 let state={roles:[],studios:[],activity:[],meta:{}};
 let view='dashboard',query='',appSort={key:'score',dir:-1},studioSort={key:'signal',dir:-1},materialSort={key:'applied',dir:-1};
-let promotedSources=new Set(JSON.parse(localStorage.getItem('jobHuntPromotedSources')||'[]'));
+let promotedSources=new Set(readStoredSources());
+function readStoredSources(){try{const v=JSON.parse(localStorage.getItem('jobHuntPromotedSources')||'[]');return Array.isArray(v)?v:[]}catch{return []}}
+let personal={},personalKey,unreadPersonal=new Set();
+const PERSONAL_PREFIX='jobHuntPersonal:v1:';
+async function loadPersonal(password){
+  personal={};unreadPersonal=new Set();
+  const material=await crypto.subtle.importKey('raw',enc.encode(password),'PBKDF2',false,['deriveKey']);
+  personalKey=await crypto.subtle.deriveKey({name:'PBKDF2',salt:enc.encode('Job Hunt personal v1:'+location.origin+location.pathname),iterations:250000,hash:'SHA-256'},material,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+  for(const r of state.roles){
+    try{
+      const raw=localStorage.getItem(PERSONAL_PREFIX+r.id);if(!raw)continue;
+      const v=JSON.parse(raw);if(v.v!==1)throw Error('version');
+      const data=JSON.parse(dec.decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:b64(v.iv),additionalData:enc.encode(r.id)},personalKey,b64(v.ciphertext))));
+      if(typeof data.notes!=='string'||typeof data.intendedResumeRef!=='string')throw Error('data');
+      personal[r.id]=data;
+    }catch{unreadPersonal.add(r.id)}
+  }
+}
+async function savePersonal(id,data){
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:enc.encode(id)},personalKey,enc.encode(JSON.stringify(data))));
+  const base64=bytes=>btoa(String.fromCharCode(...bytes));
+  if(unreadPersonal.has(id))throw Error('Unread saved notes must not be overwritten');
+  localStorage.setItem(PERSONAL_PREFIX+id,JSON.stringify({v:1,iv:base64(iv),ciphertext:base64(ct)}));
+  personal[id]=data;
+}
+function intendedResumeRef(r){return Object.hasOwn(personal,r.id)?personal[r.id].intendedResumeRef:r.intendedResumeRef||''}
+function effectiveResumeRef(r){return r.resumeRef||intendedResumeRef(r)}
+function privateMaterialUrl(path){
+  if(typeof path!=='string'||!path.startsWith('materials/')||path.split('/').some(x=>!x||x==='.'||x==='..')||/[\\?#]/.test(path))return '';
+  return 'https://github.com/ACPOmega/job-hunt-command-center/blob/main/'+path.split('/').map(encodeURIComponent).join('/');
+}
+function documentLinks(d,label){
+  if(!d)return '';
+  const paths=[['path',label],['source','Open DOCX'],['text','Open letter text']];
+  return '<div class="material-links">'+paths.map(([key,title])=>{const url=privateMaterialUrl(d[key]);return url?'<a href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">'+esc(title)+' ↗</a>':''}).join('')+'</div>';
+}
+function resumeLinks(r){return documentLinks(docById('resumes',effectiveResumeRef(r)),'Open Resume')}
+function letterLinks(r){return documentLinks(docById('coverLetters',r.coverLetterRef),'Open Cover Letter')}
+function resumeMappingLabel(r){const label=materialResumeLabel(r);return label?label+(r.resumeRef?' · Submitted / verified':' · Intended'):'Not mapped'}
+function personalEditor(r){
+  const selected=intendedResumeRef(r),personalReadError=unreadPersonal.has(r.id);
+  return '<div class="field full personal-editor"><label for="intendedResume">Intended resume</label><select id="intendedResume"><option value="">No planned choice</option>'+(state.documents?.resumes||[]).map(d=>'<option value="'+esc(d.id)+'" '+(selected===d.id?'selected':'')+'>'+esc(d.name||d.id)+'</option>').join('')+'</select><p class="muted">Planned choice only. Submitted mappings stay verified in the private tracker.</p><label for="personalNotes">My notes</label><textarea id="personalNotes" rows="5" maxlength="20000" placeholder="Add your notes for this role…">'+esc(personal[r.id]?.notes||'')+'</textarea><p class="muted">Encrypted in this browser. Use Export data for a backup. These notes do not sync to the private tracker or another device.</p>'+(personalReadError?'<p class="local-warning">Some saved notes could not be read. Use the original access key/browser before saving over them.</p>':'')+'<button type="button" id="savePersonal">Save notes & resume choice</button><button type="button" id="exportPersonal">Export data & saved notes</button><span id="personalSaveStatus" role="status" aria-live="polite"></span></div>';
+}
+function bindPersonalEditor(r){
+  $('#exportPersonal').onclick=exportData;
+  $('#savePersonal').onclick=async()=>{
+    const button=$('#savePersonal'),status=$('#personalSaveStatus');button.disabled=true;
+    try{
+      const intendedResumeRef=$('#intendedResume').value;
+      if(intendedResumeRef&&!docById('resumes',intendedResumeRef))throw Error('mapping');
+      await savePersonal(r.id,{notes:$('#personalNotes').value,intendedResumeRef,updatedAt:new Date().toISOString()});
+      render();$('#resumeMapping').textContent=resumeMappingLabel(r);$('#resumeLinks').innerHTML=resumeLinks(r);
+      status.textContent='Saved in this browser.';
+    }catch{status.textContent='Could not save. Keep this dialog open and copy your notes or try again.'}
+    finally{button.disabled=false}
+  };
+}
+function exportData(){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify({...state,browserLocal:{roles:personal,scope:'This browser only; intended choices are not submitted mappings'}},null,2)],{type:'application/json'}));
+  a.download='job-hunt-data.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
 const $=s=>document.querySelector(s), enc=new TextEncoder(), dec=new TextDecoder();
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const b64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
@@ -74,7 +136,7 @@ function fitRank(v){return ({Strong:7,Good:6,Moderate:5,Possible:4,Fair:3,Stretc
 function statusRank(v){return ({Interviewing:9,Offer:8,'Awaiting response':7,Applied:6,'Not applied':5,Unresolved:4,Rejected:3,Passed:2,Dead:1,Duplicate:0}[v]||0)}
 function salaryMax(r){const v=moneyValues(r.salary);return v.length?Math.max(...v):0}
 function docById(kind,id){return (state.documents?.[kind]||[]).find(d=>d.id===id)}
-function materialResumeLabel(r){const d=docById('resumes',r.resumeRef);return d?.name||d?.title||r.resume||r.resumeVariant||''}
+function materialResumeLabel(r){const d=docById('resumes',effectiveResumeRef(r));return d?.name||d?.title||r.resume||r.resumeVariant||''}
 function materialLetterDocLabel(r){const d=docById('coverLetters',r.coverLetterRef);return d?.name||d?.title||''}
 function materialLetterLabel(r){return materialLetterDocLabel(r)||r.letter||''}
 function materialBadge(v,empty='Not mapped'){return v?badge(v):badge(empty,'muted')}
@@ -136,6 +198,7 @@ async function unlock(pw){
     const r=await fetch(ENC_URL,{cache:'no-store'}); if(!r.ok)throw new Error('load');
     state=await decryptData(pw,await r.json());
     if(!Array.isArray(state.roles)||!Array.isArray(state.studios))throw new Error('data');
+    await loadPersonal(pw);
     sessionStorage.setItem('jobHuntMagicKey',pw);
     $('#lockScreen').hidden=true;
     $('#appShell').hidden=false;
@@ -152,7 +215,7 @@ function bind(){
   $('#globalSearch').oninput=e=>{query=e.target.value.toLowerCase();render()};
   $('#lockBtn').onclick=()=>{sessionStorage.removeItem('jobHuntMagicKey');history.replaceState(null,'',location.pathname+location.search);location.reload()};
   $('#themeBtn').onclick=()=>document.documentElement.classList.toggle('light');
-  $('#exportBtn').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(state,null,2)],{type:'application/json'}));a.download='job-hunt-data.json';a.click()};
+  $('#exportBtn').onclick=exportData;
 }
 function metric(l,v,n,hot=false){return `<div class="metric${hot?' hot':''}"><div class="lab">${l}</div><div class="val">${v}</div><div class="note">${n}</div></div>`}
 function isActionable(r){return r.status==='Not applied'&&!['Pass','Closed'].includes(String(r.track||''))&&!['Dead','Passed','Duplicate'].includes(String(r.status||''))}
@@ -189,7 +252,7 @@ function materialSortValue(r,key){
 function materialArrow(k){return materialSort.key===k?(materialSort.dir===1?' ▲':' ▼'):''}
 function materials(){
   const resumes=state.documents?.resumes||[], letters=state.documents?.coverLetters||[];
-  let rows=state.roles.filter(r=>r.applied||r.status==='Interviewing'||r.letter||r.resumeRef||r.coverLetterRef);
+  let rows=[...state.roles];
   if(query)rows=rows.filter(r=>searchable(r).includes(query)||materialResumeLabel(r).toLowerCase().includes(query)||materialLetterLabel(r).toLowerCase().includes(query));
   rows.sort((a,b)=>{const av=materialSortValue(a,materialSort.key),bv=materialSortValue(b,materialSort.key);return (typeof av==='number'&&typeof bv==='number'?(av-bv):cmpText(av,bv))*materialSort.dir});
   const mapped=state.roles.filter(r=>r.resumeRef).length;
@@ -197,9 +260,9 @@ function materials(){
   const sent=state.roles.filter(r=>/sent|submitted|ready|written/i.test(String(r.letter||''))).length;
   const missing=state.roles.filter(r=>(r.applied||r.status==='Interviewing')&&!r.resumeRef).length;
   const th=(k,l)=>`<th class="sortable" data-material-sort="${k}">${l}${materialArrow(k)}</th>`;
-  const resumeCards=resumes.length?resumes.map(d=>`<article class="material-card"><div class="eyebrow">RESUME</div><h3>${esc(d.name||d.title||d.id)}</h3><p>${esc(d.version||d.updatedAt||'')}</p><p>${esc(d.notes||'')}</p></article>`).join(''):'<div class="empty">No resume files mapped yet. Claude can upload the variants and add them to the private manifest.</div>';
-  const letterCards=letters.length?letters.map(d=>`<article class="material-card"><div class="eyebrow">COVER LETTER</div><h3>${esc(d.name||d.title||d.id)}</h3><p>${esc(d.version||d.updatedAt||'')}</p><p>${esc(d.notes||'')}</p></article>`).join(''):'<div class="empty">No cover-letter files mapped yet. Existing Sent / Ready / Not written statuses are still tracked per role.</div>';
-  return `<div class="metric-grid">${metric('Resume variants',resumes.length,'uploaded & normalized')}${metric('Roles with resume',mapped,'exact variant mapped')}${metric('Letter files',letters.length,'uploaded & normalized')}${metric('Letters tracked',sent,'sent / ready / written')}${metric('Missing resume map',missing,'applied/interviewing roles',missing>0)}</div><div class="panel"><div class="panel-head"><div><div class="eyebrow">DOCUMENT LIBRARY</div><h2>Resume variants</h2></div></div><div class="material-grid">${resumeCards}</div></div><div class="panel"><div class="panel-head"><div><div class="eyebrow">DOCUMENT LIBRARY</div><h2>Cover letters</h2></div></div><div class="material-grid">${letterCards}</div></div><div class="panel"><div class="panel-head"><div><div class="eyebrow">ROLE MAPPING</div><h2>What went out with each application</h2></div></div><div class="tablewrap"><table><thead><tr>${th('company','Company')}${th('position','Role')}${th('status','Status')}${th('resume','Resume')}${th('letter','Cover Letter')}${th('applied','Applied')}</tr></thead><tbody>${rows.map(r=>`<tr data-id="${esc(r.id)}"><td class="company">${esc(r.company)}</td><td>${esc(r.position)}</td><td>${statusBadge(r.status)}</td><td>${esc(materialResumeLabel(r)||'Not mapped')}</td><td>${esc(materialLetterLabel(r)||'—')}</td><td>${esc(r.applied||'—')}</td></tr>`).join('')}</tbody></table></div></div>`;
+  const resumeCards=resumes.length?resumes.map(d=>`<article class="material-card"><div class="eyebrow">RESUME</div><h3>${esc(d.name||d.title||d.id)}</h3><p>${esc(d.version||d.updatedAt||'')}</p><p>${esc(d.notes||'')}</p>${documentLinks(d,'Open Resume')}</article>`).join(''):'<div class="empty">No resume files mapped yet. Claude can upload the variants and add them to the private manifest.</div>';
+  const letterCards=letters.length?letters.map(d=>`<article class="material-card"><div class="eyebrow">COVER LETTER</div><h3>${esc(d.name||d.title||d.id)}</h3><p>${esc(d.version||d.updatedAt||'')}</p><p>${esc(d.notes||'')}</p>${documentLinks(d,'Open Cover Letter')}</article>`).join(''):'<div class="empty">No cover-letter files mapped yet. Existing Sent / Ready / Not written statuses are still tracked per role.</div>';
+  return `<div class="metric-grid">${metric('Resume variants',resumes.length,'uploaded & normalized')}${metric('Roles with resume',mapped,'exact variant mapped')}${metric('Letter files',letters.length,'uploaded & normalized')}${metric('Letters tracked',sent,'sent / ready / written')}${metric('Missing resume map',missing,'applied/interviewing roles',missing>0)}</div><div class="panel"><div class="panel-head"><div><div class="eyebrow">DOCUMENT LIBRARY</div><h2>Resume variants</h2></div></div><div class="material-grid">${resumeCards}</div></div><div class="panel"><div class="panel-head"><div><div class="eyebrow">DOCUMENT LIBRARY</div><h2>Cover letters</h2></div></div><div class="material-grid">${letterCards}</div></div><div class="panel"><div class="panel-head"><div><div class="eyebrow">ROLE MAPPING</div><h2>Submitted materials & planned choices</h2><p class="muted">Files open in the private library and require your GitHub sign-in. Select a role to edit its planned resume and notes.</p></div></div><div class="tablewrap"><table><thead><tr>${th('company','Company')}${th('position','Role')}${th('status','Status')}${th('resume','Resume')}${th('letter','Cover Letter')}${th('applied','Applied')}</tr></thead><tbody>${rows.map(r=>`<tr data-id="${esc(r.id)}"><td class="company">${esc(r.company)}</td><td>${esc(r.position)}</td><td>${statusBadge(r.status)}</td><td>${esc(resumeMappingLabel(r))}${resumeLinks(r)}</td><td>${esc(materialLetterLabel(r)||'—')}${letterLinks(r)}</td><td>${esc(r.applied||'—')}</td></tr>`).join('')}</tbody></table></div></div>`;
 }
 function studioArrow(k){return studioSort.key===k?(studioSort.dir===1?' ▲':' ▼'):''}
 function studioCard(s,hot=false){
@@ -213,11 +276,11 @@ function studios(){
   return `<div class="source-toolbar"><div><strong>All sources</strong><span>Fresh matches and changed boards are pinned above.</span></div><label>Sort <select id="studioSort"><option value="signal" ${studioSort.key==='signal'?'selected':''}>New jobs / signal</option><option value="last" ${studioSort.key==='last'?'selected':''}>Last checked</option><option value="priority" ${studioSort.key==='priority'?'selected':''}>Priority</option><option value="company" ${studioSort.key==='company'?'selected':''}>Company</option><option value="status" ${studioSort.key==='status'?'selected':''}>Status</option></select></label><button id="studioSortDir" type="button">${studioSort.dir===-1?'Newest / highest first':'Oldest / lowest first'}</button></div>${hot.length?`<div class="panel hot-sources"><div class="panel-head"><div><div class="eyebrow">NEW JOBS & ACTION NEEDED</div><h2>Sources worth looking at now</h2></div><span class="muted">${hot.length} pinned</span></div><div class="studio-grid">${hot.map(s=>studioCard(s,true)).join('')}</div></div>`:''}<div class="panel-head all-source-head"><div><div class="eyebrow">ALL SOURCES</div><h2>${rows.length} studios / career boards</h2></div></div><div class="studio-grid">${rows.map(s=>studioCard(s,false)).join('')}</div>`;
 }
 function activity(){const rows=[...(state.activity||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''));return `<div class="panel"><div class="timeline">${rows.map(e=>`<div class="event"><div class="date">${esc(e.date)}</div><div class="actor">${esc(e.actor)}</div><div><strong>${esc(e.type||'Update')}</strong> ${esc(e.summary)}</div></div>`).join('')}</div></div>`}
-function openRole(id){const r=state.roles.find(x=>x.id===id);if(!r)return;const d=scoreDetails(r),showScore=r.status==='Not applied';$('#detailEyebrow').textContent=r.company;$('#detailTitle').textContent=r.position;$('#detailBody').innerHTML=`<div class="detail-grid"><div class="field"><label>Status</label>${esc(r.status)}</div><div class="field"><label>Fit</label>${esc(r.fit||'—')}</div><div class="field"><label>Team</label>${esc(r.team||'—')}</div><div class="field"><label>Location</label>${esc(r.location||'—')}</div><div class="field"><label>Salary</label>${esc(r.salary||'—')}</div><div class="field"><label>Applied</label>${esc(r.applied||'—')}</div>${showScore?`<div class="field full score-breakdown"><label>Opportunity Priority Score · ${d.total}/100</label><div class="score-grid"><span>Role Fit <b>${d.fit}/30</b></span><span>Compensation <b>${d.comp}/20</b></span><span>Career Value <b>${d.career}/15</b></span><span>Access & Signal <b>${d.access}/15</b></span><span>Geography <b>${d.geo}/10</b></span><span>Freshness & Liveness <b>${d.fresh}/10</b></span></div><p>${esc(d.compNote)} · ${esc(d.accessNote)} · ${esc(d.freshNote)}${d.mods.length?' · '+esc(d.mods.join(', ')):''}</p></div>`:''}<div class="field full materials-detail"><label>Application materials</label><div class="material-detail-row"><span>Resume</span><b>${esc(materialResumeLabel(r)||'Not mapped')}</b></div><div class="material-detail-row"><span>Cover letter</span><b>${esc(materialLetterLabel(r)||'—')}</b></div></div><div class="field full"><label>Next action</label>${esc(r.nextAction||'—')}</div>${r.referral?`<div class="field full"><label>Referral</label>${esc(r.referral)}</div>`:''}${r.recruiter?`<div class="field full"><label>Recruiter / contact</label>${esc(r.recruiter)}</div>`:''}<div class="field full"><label>Evidence</label>${esc(r.evidence||'—')}</div><div class="field full"><label>Notes</label>${esc(r.notes||'—')}</div>${r.link?`<div class="field full"><label>Posting</label><a href="${esc(r.link)}" target="_blank" rel="noopener">Open posting ↗</a></div>`:''}</div>`;$('#detailDialog').showModal()}
+function openRole(id){const r=state.roles.find(x=>x.id===id);if(!r)return;const d=scoreDetails(r),showScore=r.status==='Not applied';$('#detailEyebrow').textContent=r.company;$('#detailTitle').textContent=r.position;$('#detailBody').innerHTML=`<div class="detail-grid"><div class="field"><label>Status</label>${esc(r.status)}</div><div class="field"><label>Fit</label>${esc(r.fit||'—')}</div><div class="field"><label>Team</label>${esc(r.team||'—')}</div><div class="field"><label>Location</label>${esc(r.location||'—')}</div><div class="field"><label>Salary</label>${esc(r.salary||'—')}</div><div class="field"><label>Applied</label>${esc(r.applied||'—')}</div>${showScore?`<div class="field full score-breakdown"><label>Opportunity Priority Score · ${d.total}/100</label><div class="score-grid"><span>Role Fit <b>${d.fit}/30</b></span><span>Compensation <b>${d.comp}/20</b></span><span>Career Value <b>${d.career}/15</b></span><span>Access & Signal <b>${d.access}/15</b></span><span>Geography <b>${d.geo}/10</b></span><span>Freshness & Liveness <b>${d.fresh}/10</b></span></div><p>${esc(d.compNote)} · ${esc(d.accessNote)} · ${esc(d.freshNote)}${d.mods.length?' · '+esc(d.mods.join(', ')):''}</p></div>`:''}<div class="field full materials-detail"><label>Application materials</label><div class="material-detail-row"><span>Resume</span><b id="resumeMapping">${esc(resumeMappingLabel(r))}</b></div><div id="resumeLinks">${resumeLinks(r)}</div><div class="material-detail-row"><span>Cover letter</span><b>${esc(materialLetterLabel(r)||'—')}</b></div>${letterLinks(r)}<p class="muted">Private library — GitHub sign-in required.</p></div>${personalEditor(r)}<div class="field full"><label>Next action</label>${esc(r.nextAction||'—')}</div>${r.referral?`<div class="field full"><label>Referral</label>${esc(r.referral)}</div>`:''}${r.recruiter?`<div class="field full"><label>Recruiter / contact</label>${esc(r.recruiter)}</div>`:''}<div class="field full"><label>Evidence</label>${esc(r.evidence||'—')}</div><div class="field full"><label>Tracker notes</label>${esc(r.notes||'—')}</div>${r.link?`<div class="field full"><label>Posting</label><a href="${esc(r.link)}" target="_blank" rel="noopener">Open posting ↗</a></div>`:''}</div>`;bindPersonalEditor(r);$('#detailDialog').showModal()}
 const titles={dashboard:['Dashboard','What matters now, across the entire search.'],priority:['Priority Queue','Verified opportunities you have not applied to.'],applications:['Applications','Evidence-backed application state across both inboxes.'],materials:['Materials','Exact resumes and cover letters tied to each role.'],studios:['Studio Sweep','The actual career boards — not just LinkedIn.'],activity:['Activity','What changed, who changed it, and why.']};
 function render(){
   const t=titles[view];$('#viewTitle').textContent=t[0];$('#viewSub').textContent=t[1];$('#priorityBadge').textContent=priorityRoles().length;$('#syncMini').innerHTML=`<b>${esc(state.meta?.version||'1.0')}</b><br>${state.roles.length} roles · ${state.studios.length} studios`;$('#view').innerHTML=view==='dashboard'?dashboard():view==='priority'?priority():view==='applications'?applications():view==='materials'?materials():view==='studios'?studios():activity();
-  document.querySelectorAll('[data-id],[data-role]').forEach(el=>el.onclick=()=>openRole(el.dataset.id||el.dataset.role));
+  document.querySelectorAll('[data-id],[data-role]').forEach(el=>el.onclick=e=>{if(e.target.closest('a,button,select,textarea'))return;openRole(el.dataset.id||el.dataset.role)});
   document.querySelectorAll('[data-app-sort]').forEach(el=>el.onclick=()=>{const k=el.dataset.appSort;if(appSort.key===k)appSort.dir*=-1;else{appSort={key:k,dir:(k==='company'||k==='position'||k==='status'||k==='fit'||k==='location'?1:-1)}}render()});
   document.querySelectorAll('[data-material-sort]').forEach(el=>el.onclick=()=>{const k=el.dataset.materialSort;if(materialSort.key===k)materialSort.dir*=-1;else materialSort={key:k,dir:(k==='company'||k==='position'||k==='status'||k==='resume'||k==='letter'?1:-1)};render()});
   document.querySelectorAll('[data-source-toggle]').forEach(el=>el.onclick=e=>{e.stopPropagation();toggleSource(el.dataset.sourceToggle)});

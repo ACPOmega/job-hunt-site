@@ -312,3 +312,15 @@ button.primary{
   }
   :root.light .sidebar nav button.active{background:rgba(85,37,131,.14)}
 }
+/* Private materials and browser-local role edits. */
+.material-links{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.material-links a{display:inline-block;padding:7px 10px;border:1px solid var(--line);border-radius:7px;color:var(--text);font-size:12px;text-decoration:none}
+.material-links a:hover{border-color:var(--gold);color:var(--gold)}
+.personal-editor select,.personal-editor textarea{display:block;width:100%;box-sizing:border-box;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:7px;padding:10px;font:inherit}
+.personal-editor textarea{resize:vertical;min-height:110px}
+.personal-editor p,.materials-detail p{font-size:12px;line-height:1.5}
+.personal-editor button{margin-right:10px}
+.personal-editor textarea:focus,.personal-editor select:focus{outline:2px solid var(--gold);outline-offset:2px}
+.local-warning{color:var(--gold)}
+#personalSaveStatus{display:inline-block;font-size:12px;margin-top:8px}
+.material-detail-row{flex-wrap:wrap;gap:8px}
