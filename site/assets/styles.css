@@ -273,3 +273,42 @@ button.primary{
   .sidebar nav{grid-template-columns:repeat(6,1fr)}
   .sidebar nav button.active{background:rgba(85,37,131,.36);box-shadow:inset 0 2px var(--lakers-gold)}
 }
+
+/* Classic Lakers Executive — light-mode corrections.
+   --cream is a light colour in light mode, so text that uses it must switch to --text,
+   and the dark sidebar/table gradients need light equivalents. */
+:root.light .topbar h1,
+:root.light .metric .val,
+:root.light .panel h2,
+:root.light .priority-card h3,
+:root.light .studio h3,
+:root.light nav button.active{color:var(--text)}
+:root.light .sidebar{
+  background:
+    linear-gradient(180deg,rgba(85,37,131,.12),var(--panel) 34%),
+    var(--panel);
+  box-shadow:8px 0 34px rgba(56,30,72,.06);
+}
+:root.light nav button.active{background:linear-gradient(90deg,rgba(85,37,131,.14),rgba(216,154,0,.06))}
+:root.light nav button.active span{color:var(--purple)}
+:root.light .eyebrow,
+:root.light .score b,
+:root.light .table-score,
+:root.light .s-not-applied,
+:root.light .process-mark{color:var(--gold)!important}
+:root.light .score span{color:var(--muted)}
+:root.light .b-strong{color:var(--purple)}
+:root.light .studio a,:root.light .field a,:root.light .source-actions a{color:var(--purple)}
+:root.light th{background:var(--panel2)}
+:root.light th.sortable:hover{background:var(--line)}
+:root.light .lock-card{box-shadow:0 28px 90px rgba(56,30,72,.16)}
+:root.light .dialog-card{box-shadow:0 28px 100px rgba(56,30,72,.22)}
+:root.light ::selection{color:var(--text)}
+@media(max-width:720px){
+  :root.light .sidebar{
+    background:
+      linear-gradient(90deg,rgba(85,37,131,.10),var(--panel)),
+      var(--panel);
+  }
+  :root.light .sidebar nav button.active{background:rgba(85,37,131,.14)}
+}
