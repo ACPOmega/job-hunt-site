@@ -1,7 +1,8 @@
 (()=>{
 const ENC_URL='data/job-data.enc.json';
 let state={roles:[],studios:[],activity:[],meta:{}};
-let view='dashboard',query='';
+let view='dashboard',query='',appSort={key:'score',dir:-1},studioSort={key:'signal',dir:-1};
+let promotedSources=new Set(JSON.parse(localStorage.getItem('jobHuntPromotedSources')||'[]'));
 const $=s=>document.querySelector(s), enc=new TextEncoder(), dec=new TextDecoder();
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const b64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
@@ -72,6 +73,54 @@ function scoreDetails(r){
 }
 function score(r){return scoreDetails(r).total}
 function searchable(r){return [r.company,r.position,r.team,r.location,r.status,r.fit,r.notes,r.evidence].join(' ').toLowerCase()}
+function cmpText(a,b){return String(a??'').localeCompare(String(b??''),undefined,{numeric:true,sensitivity:'base'})}
+function fitRank(v){return ({Strong:7,Good:6,Moderate:5,Possible:4,Fair:3,Stretch:2,Weak:1}[v]||0)}
+function statusRank(v){return ({Interviewing:9,Offer:8,'Awaiting response':7,Applied:6,'Not applied':5,Unresolved:4,Rejected:3,Passed:2,Dead:1,Duplicate:0}[v]||0)}
+function salaryMax(r){const v=moneyValues(r.salary);return v.length?Math.max(...v):0}
+function appSortValue(r,key){
+  if(key==='score')return score(r);
+  if(key==='company')return r.company||'';
+  if(key==='position')return r.position||'';
+  if(key==='status')return statusRank(r.status);
+  if(key==='fit')return fitRank(r.fit);
+  if(key==='applied')return r.applied||'';
+  if(key==='age')return r.applied?Math.floor((Date.now()-new Date(r.applied+'T12:00:00'))/86400000):-1;
+  if(key==='location')return r.location||'';
+  if(key==='salary')return salaryMax(r);
+  if(key==='next')return r.nextDue||r.nextAction||'';
+  return '';
+}
+function sortApps(rows){
+  const {key,dir}=appSort;return rows.sort((a,b)=>{const av=appSortValue(a,key),bv=appSortValue(b,key);return (typeof av==='number'&&typeof bv==='number'?(av-bv):cmpText(av,bv))*dir});
+}
+function studioSignalRank(s){
+  const st=String(s.status||'').toLowerCase(),sig=String(s.signal||'').toLowerCase();
+  let n=0;
+  if(st.includes('match found'))n+=100;
+  if(/new|found|live|open|applied|unsubmitted|logged|role|producer|director|manager/.test(sig))n+=40;
+  if(st.includes('needs manual sweep')||st.includes('needs board resolve'))n+=25;
+  if(st.includes('dead'))n-=100;
+  if(s.priority==='High')n+=15; else if(s.priority==='Medium')n+=8;
+  return n;
+}
+function studioSortValue(s,key){
+  if(key==='signal')return studioSignalRank(s);
+  if(key==='last')return s.last||'';
+  if(key==='company')return s.co||'';
+  if(key==='priority')return ({High:3,Medium:2,Low:1,None:0}[s.priority]||0);
+  if(key==='status')return s.status||'';
+  return '';
+}
+function sortStudios(rows){
+  const {key,dir}=studioSort;return rows.sort((a,b)=>{const av=studioSortValue(a,key),bv=studioSortValue(b,key);return (typeof av==='number'&&typeof bv==='number'?(av-bv):cmpText(av,bv))*dir});
+}
+function sourceIsHot(s){return studioSignalRank(s)>=40&&!/dead/i.test(String(s.status||''))}
+function savePromotedSources(){localStorage.setItem('jobHuntPromotedSources',JSON.stringify([...promotedSources]))}
+function toggleSource(name){promotedSources.has(name)?promotedSources.delete(name):promotedSources.add(name);savePromotedSources();render()}
+function promotedSourceCards(){
+  const rows=state.studios.filter(s=>promotedSources.has(s.co)).sort((a,b)=>studioSignalRank(b)-studioSignalRank(a));
+  return rows.map(s=>`<article class="priority-card source-lead"><div><div class="eyebrow">SOURCE LEAD</div><h3>${esc(s.co)}</h3><p>${esc(s.signal||'Review current openings')}</p><div style="margin-top:7px;display:flex;gap:5px;flex-wrap:wrap">${badge(s.status||'Source')}${s.last?badge('Checked '+s.last):''}</div><div class="source-actions">${s.board?`<a href="${esc(s.board)}" target="_blank" rel="noopener">Open career board ↗</a>`:''}<button type="button" data-source-toggle="${esc(s.co)}">Remove</button></div></div><div class="process-mark">SOURCE</div></article>`).join('');
+}
 async function decryptData(password,payload){
   const keyMaterial=await crypto.subtle.importKey('raw',enc.encode(password),'PBKDF2',false,['deriveKey']);
   const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt:b64(payload.salt),iterations:payload.iterations,hash:'SHA-256'},keyMaterial,{name:'AES-GCM',length:256},false,['decrypt']);
@@ -117,14 +166,36 @@ function priority(){
   const highIds=new Set(high.map(r=>r.id));
   const rest=rows.filter(r=>!firstIds.has(r.id)&&!highIds.has(r.id));
   const empty='<div class="empty">No roles in this lane.</div>';
-  return `${active.length?`<div class="panel active-panel priority-active"><div class="panel-head"><div><div class="eyebrow">ACTIVE PROCESSES</div><h2>Interviewing now — protect these first</h2></div></div><div class="priority-list">${active.map(processCard).join('')}</div></div>`:''}<div class="kanban"><div class="lane critical"><h2>Apply first</h2>${first.map(card).join('')||empty}</div><div class="lane high"><h2>High value</h2>${high.map(card).join('')||empty}</div><div class="lane bridge"><h2>Secondary / bridge</h2>${rest.map(card).join('')||empty}</div></div>`;
+  const sourceCards=promotedSourceCards(); return `${sourceCards?`<div class="panel source-board-panel"><div class="panel-head"><div><div class="eyebrow">JOB BOARD SOURCES</div><h2>Studios promoted from Source Sweep</h2></div></div><div class="priority-list">${sourceCards}</div></div>`:''}${active.length?`<div class="panel active-panel priority-active"><div class="panel-head"><div><div class="eyebrow">ACTIVE PROCESSES</div><h2>Interviewing now — protect these first</h2></div></div><div class="priority-list">${active.map(processCard).join('')}</div></div>`:''}<div class="kanban"><div class="lane critical"><h2>Apply first</h2>${first.map(card).join('')||empty}</div><div class="lane high"><h2>High value</h2>${high.map(card).join('')||empty}</div><div class="lane bridge"><h2>Secondary / bridge</h2>${rest.map(card).join('')||empty}</div></div>`;
 }
-function applications(){let rows=state.roles.filter(r=>!query||searchable(r).includes(query));rows.sort((a,b)=>score(b)-score(a)||(b.applied||'').localeCompare(a.applied||''));return `<div class="tablewrap"><table><thead><tr><th>Company</th><th>Role</th><th>Status</th><th>Fit</th><th>Applied</th><th>Age</th><th>Location</th><th>Salary</th><th>Next</th></tr></thead><tbody>${rows.map(r=>`<tr data-id="${esc(r.id)}"><td class="company">${esc(r.company)}</td><td>${esc(r.position)}</td><td>${statusBadge(r.status)}</td><td>${fitBadge(r.fit)}</td><td>${esc(r.applied||'—')}</td><td>${age(r.applied)}</td><td>${esc(r.location||'—')}</td><td>${esc(r.salary||'—')}</td><td>${esc(r.nextAction||'—')}</td></tr>`).join('')}</tbody></table></div>`}
-function studios(){let rows=state.studios.filter(s=>!query||[s.co,s.ats,s.status,s.signal,s.notes].join(' ').toLowerCase().includes(query));return `<div class="studio-grid">${rows.map(s=>`<article class="studio"><div class="panel-head"><h3>${esc(s.co)}</h3>${badge(s.cadence||'')}</div><div class="studio-meta">${badge(s.priority||'')}${badge(s.status||'')}</div><p class="signal">${esc(s.signal||'No current signal recorded.')}</p><p>${esc(s.notes||'')}</p>${s.board?`<a href="${esc(s.board)}" target="_blank" rel="noopener">Open career board ↗</a>`:''}<p>Last checked: ${esc(s.last||'—')} · ${esc(s.ats||'')}</p></article>`).join('')}</div>`}
+function sortArrow(k){return appSort.key===k?(appSort.dir===1?' ▲':' ▼'):''}
+function applications(){
+  let rows=state.roles.filter(r=>!query||searchable(r).includes(query));sortApps(rows);
+  const th=(k,l)=>`<th class="sortable" data-app-sort="${k}">${l}${sortArrow(k)}</th>`;
+  return `<div class="tablewrap"><table><thead><tr>${th('score','Score')}${th('company','Company')}${th('position','Role')}${th('status','Status')}${th('fit','Fit')}${th('applied','Applied')}${th('age','Age')}${th('location','Location')}${th('salary','Salary')}${th('next','Next')}</tr></thead><tbody>${rows.map(r=>`<tr data-id="${esc(r.id)}"><td><b class="table-score">${score(r)}</b></td><td class="company">${esc(r.company)}</td><td>${esc(r.position)}</td><td>${statusBadge(r.status)}</td><td>${fitBadge(r.fit)}</td><td>${esc(r.applied||'—')}</td><td>${age(r.applied)}</td><td>${esc(r.location||'—')}</td><td>${esc(r.salary||'—')}</td><td>${esc(r.nextAction||'—')}</td></tr>`).join('')}</tbody></table></div>`;
+}
+function studioArrow(k){return studioSort.key===k?(studioSort.dir===1?' ▲':' ▼'):''}
+function studioCard(s,hot=false){
+  const promoted=promotedSources.has(s.co);
+  return `<article class="studio${hot?' studio-hot':''}"><div class="panel-head"><div><h3>${esc(s.co)}</h3>${hot?'<div class="eyebrow">NEW / ACTIONABLE</div>':''}</div>${badge(s.cadence||'')}</div><div class="studio-meta">${badge(s.priority||'')}${badge(s.status||'')}</div><p class="signal">${esc(s.signal||'No current signal recorded.')}</p><p>${esc(s.notes||'')}</p><div class="studio-actions">${s.board?`<a href="${esc(s.board)}" target="_blank" rel="noopener">Open career board ↗</a>`:''}<button type="button" class="${promoted?'promoted':''}" data-source-toggle="${esc(s.co)}">${promoted?'On Job Board ✓':'Promote to Job Board'}</button></div><p>Last checked: ${esc(s.last||'—')} · ${esc(s.ats||'')}</p></article>`;
+}
+function studios(){
+  let rows=state.studios.filter(s=>!query||[s.co,s.ats,s.status,s.signal,s.notes].join(' ').toLowerCase().includes(query));
+  const hot=rows.filter(sourceIsHot).sort((a,b)=>studioSignalRank(b)-studioSignalRank(a)||(b.last||'').localeCompare(a.last||'')).slice(0,12);
+  sortStudios(rows);
+  return `<div class="source-toolbar"><div><strong>All sources</strong><span>Fresh matches and changed boards are pinned above.</span></div><label>Sort <select id="studioSort"><option value="signal" ${studioSort.key==='signal'?'selected':''}>New jobs / signal</option><option value="last" ${studioSort.key==='last'?'selected':''}>Last checked</option><option value="priority" ${studioSort.key==='priority'?'selected':''}>Priority</option><option value="company" ${studioSort.key==='company'?'selected':''}>Company</option><option value="status" ${studioSort.key==='status'?'selected':''}>Status</option></select></label><button id="studioSortDir" type="button">${studioSort.dir===-1?'Newest / highest first':'Oldest / lowest first'}</button></div>${hot.length?`<div class="panel hot-sources"><div class="panel-head"><div><div class="eyebrow">NEW JOBS & ACTION NEEDED</div><h2>Sources worth looking at now</h2></div><span class="muted">${hot.length} pinned</span></div><div class="studio-grid">${hot.map(s=>studioCard(s,true)).join('')}</div></div>`:''}<div class="panel-head all-source-head"><div><div class="eyebrow">ALL SOURCES</div><h2>${rows.length} studios / career boards</h2></div></div><div class="studio-grid">${rows.map(s=>studioCard(s,false)).join('')}</div>`;
+}
 function activity(){const rows=[...(state.activity||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''));return `<div class="panel"><div class="timeline">${rows.map(e=>`<div class="event"><div class="date">${esc(e.date)}</div><div class="actor">${esc(e.actor)}</div><div><strong>${esc(e.type||'Update')}</strong> ${esc(e.summary)}</div></div>`).join('')}</div></div>`}
 function openRole(id){const r=state.roles.find(x=>x.id===id);if(!r)return;const d=scoreDetails(r),showScore=r.status==='Not applied';$('#detailEyebrow').textContent=r.company;$('#detailTitle').textContent=r.position;$('#detailBody').innerHTML=`<div class="detail-grid"><div class="field"><label>Status</label>${esc(r.status)}</div><div class="field"><label>Fit</label>${esc(r.fit||'—')}</div><div class="field"><label>Team</label>${esc(r.team||'—')}</div><div class="field"><label>Location</label>${esc(r.location||'—')}</div><div class="field"><label>Salary</label>${esc(r.salary||'—')}</div><div class="field"><label>Applied</label>${esc(r.applied||'—')}</div>${showScore?`<div class="field full score-breakdown"><label>Opportunity Priority Score · ${d.total}/100</label><div class="score-grid"><span>Role Fit <b>${d.fit}/30</b></span><span>Compensation <b>${d.comp}/20</b></span><span>Career Value <b>${d.career}/15</b></span><span>Access & Signal <b>${d.access}/15</b></span><span>Geography <b>${d.geo}/10</b></span><span>Freshness & Liveness <b>${d.fresh}/10</b></span></div><p>${esc(d.compNote)} · ${esc(d.accessNote)} · ${esc(d.freshNote)}${d.mods.length?' · '+esc(d.mods.join(', ')):''}</p></div>`:''}<div class="field full"><label>Next action</label>${esc(r.nextAction||'—')}</div>${r.referral?`<div class="field full"><label>Referral</label>${esc(r.referral)}</div>`:''}${r.recruiter?`<div class="field full"><label>Recruiter / contact</label>${esc(r.recruiter)}</div>`:''}<div class="field full"><label>Evidence</label>${esc(r.evidence||'—')}</div><div class="field full"><label>Notes</label>${esc(r.notes||'—')}</div>${r.link?`<div class="field full"><label>Posting</label><a href="${esc(r.link)}" target="_blank" rel="noopener">Open posting ↗</a></div>`:''}</div>`;$('#detailDialog').showModal()}
 const titles={dashboard:['Dashboard','What matters now, across the entire search.'],priority:['Priority Queue','Verified opportunities you have not applied to.'],applications:['Applications','Evidence-backed application state across both inboxes.'],studios:['Studio Sweep','The actual career boards — not just LinkedIn.'],activity:['Activity','What changed, who changed it, and why.']};
-function render(){const t=titles[view];$('#viewTitle').textContent=t[0];$('#viewSub').textContent=t[1];$('#priorityBadge').textContent=priorityRoles().length;$('#syncMini').innerHTML=`<b>${esc(state.meta?.version||'1.0')}</b><br>${state.roles.length} roles · ${state.studios.length} studios`;$('#view').innerHTML=view==='dashboard'?dashboard():view==='priority'?priority():view==='applications'?applications():view==='studios'?studios():activity();document.querySelectorAll('[data-id],[data-role]').forEach(el=>el.onclick=()=>openRole(el.dataset.id||el.dataset.role))}
+function render(){
+  const t=titles[view];$('#viewTitle').textContent=t[0];$('#viewSub').textContent=t[1];$('#priorityBadge').textContent=priorityRoles().length;$('#syncMini').innerHTML=`<b>${esc(state.meta?.version||'1.0')}</b><br>${state.roles.length} roles · ${state.studios.length} studios`;$('#view').innerHTML=view==='dashboard'?dashboard():view==='priority'?priority():view==='applications'?applications():view==='studios'?studios():activity();
+  document.querySelectorAll('[data-id],[data-role]').forEach(el=>el.onclick=()=>openRole(el.dataset.id||el.dataset.role));
+  document.querySelectorAll('[data-app-sort]').forEach(el=>el.onclick=()=>{const k=el.dataset.appSort;if(appSort.key===k)appSort.dir*=-1;else{appSort={key:k,dir:(k==='company'||k==='position'||k==='status'||k==='fit'||k==='location'?1:-1)}}render()});
+  document.querySelectorAll('[data-source-toggle]').forEach(el=>el.onclick=e=>{e.stopPropagation();toggleSource(el.dataset.sourceToggle)});
+  const ss=$('#studioSort');if(ss)ss.onchange=e=>{studioSort.key=e.target.value;studioSort.dir=(studioSort.key==='company'||studioSort.key==='status'?1:-1);render()};
+  const sd=$('#studioSortDir');if(sd)sd.onclick=()=>{studioSort.dir*=-1;render()};
+}
 const magicKey=decodeURIComponent(location.hash.slice(1))||sessionStorage.getItem('jobHuntMagicKey')||'';
 if(magicKey){unlock(magicKey)}else{$('#accessMessage').textContent='This dashboard opens from your private access link.';$('#unlockError').textContent='Private key missing from this URL.';}
 })();
