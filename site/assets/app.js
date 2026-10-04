@@ -55,7 +55,7 @@ function scoreDetails(r){
   const blob=[r.evidence,r.notes].join(' ');
   const iso=blob.match(/(?:first[_ ]published|published|posted(?:Date)?)[^\d]*(2026-\d{2}-\d{2})/i);
   if(iso){
-    const ageDays=Math.max(0,Math.floor((new Date('2026-10-04T12:00:00')-new Date(iso[1]+'T12:00:00'))/86400000));
+    const now=new Date();now.setHours(12,0,0,0);const ageDays=Math.max(0,Math.floor((now-new Date(iso[1]+'T12:00:00'))/86400000));
     fresh=ageDays<=7?10:ageDays<=14?9:ageDays<=30?7:ageDays<=45?5:ageDays<=90?3:1;
     freshNote=ageDays+' days old';
   }else if(r.live===true){fresh=7;freshNote='Marked live'}
