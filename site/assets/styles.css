@@ -26,3 +26,17 @@ button.primary{background:var(--purple)!important;color:#fff!important;border-co
 .lock-card h1{font-size:25px;margin:5px 0 7px}.lock-card p{color:var(--muted);font-size:13px;line-height:1.55;margin:0 0 18px}.lock-card label{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.7px;font-weight:800;margin-bottom:6px}.password-wrap{position:relative;margin-bottom:10px}.lock-card .password-wrap input{width:100%;border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:9px;padding:11px 70px 11px 11px;font:inherit;margin:0}.lock-card .password-toggle{position:absolute;right:7px;top:50%;transform:translateY(-50%);width:auto;border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:7px;padding:6px 9px;font:inherit;font-size:11px;font-weight:800;cursor:pointer}.lock-card button.primary{width:100%;border:0;border-radius:9px;padding:11px;font:inherit;font-weight:800;cursor:pointer}.lock-error{min-height:18px;color:var(--red);font-size:11px;margin-top:9px}.unlocking{opacity:.7;pointer-events:none}.s-unresolved{color:var(--orange)}
 /* visibility contract */
 .app-shell[hidden],.lock-screen[hidden]{display:none!important}
+
+/* opportunity scoring */
+.score{min-width:74px;text-align:right;color:var(--gold);align-self:start}
+.score span{display:block;font-size:8px;line-height:1.15;text-transform:uppercase;letter-spacing:.55px;color:var(--muted);font-weight:800;margin-bottom:3px}
+.score b{font-size:18px;line-height:1;font-weight:900;color:var(--gold)}
+.score-breakdown{border:1px solid color-mix(in srgb,var(--purple) 50%,var(--line))}
+.score-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:8px}
+.score-grid span{display:flex;justify-content:space-between;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:7px 8px;font-size:10px;color:var(--muted)}
+.score-grid b{color:var(--text);white-space:nowrap}
+.score-breakdown p{font-size:10px;color:var(--muted);line-height:1.45;margin:8px 0 0}
+.process-mark{font-size:9px;font-weight:900;letter-spacing:.8px;color:var(--green);border:1px solid color-mix(in srgb,var(--green) 45%,var(--line));padding:4px 7px;border-radius:99px;align-self:start}
+.active-panel{border-top:3px solid var(--green);margin-bottom:14px}
+.priority-active{margin-bottom:14px}
+@media(max-width:720px){.score{min-width:62px}.score b{font-size:16px}.score span{font-size:7px}.score-grid{grid-template-columns:1fr}}
