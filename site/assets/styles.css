@@ -318,6 +318,13 @@ button.primary{
 .material-links a:hover{border-color:var(--gold);color:var(--gold)}
 .personal-editor select,.personal-editor textarea{display:block;width:100%;box-sizing:border-box;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:7px;padding:10px;font:inherit}
 .personal-editor textarea{resize:vertical;min-height:110px}
+.personal-editor input[type=date]{display:block;box-sizing:border-box;width:100%;padding:10px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--text);font:inherit}
+.personal-editor button,.handoff-actions button{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:7px;padding:8px 10px;cursor:pointer;margin:4px 6px 4px 0;font:inherit;font-size:12px}
+.personal-editor button:hover,.handoff-actions button:hover{border-color:var(--gold)}
+.handoff-panel{padding:14px;margin-bottom:16px}
+.handoff-panel p{color:var(--muted);font-size:12px;line-height:1.5}
+.handoff-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.handoff-actions [role=status]{font-size:12px}
 .personal-editor p,.materials-detail p{font-size:12px;line-height:1.5}
 .personal-editor button{margin-right:10px}
 .personal-editor textarea:focus,.personal-editor select:focus{outline:2px solid var(--gold);outline-offset:2px}

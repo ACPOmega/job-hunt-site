@@ -1,6 +1,28 @@
 (()=>{
 const ENC_URL='data/job-data.enc.json';
 let state={roles:[],studios:[],activity:[],meta:{}};
+let canonicalState=state;
+const ROLE_STATUSES=['Not applied','Applied','Awaiting response','Interviewing','Offer','Rejected','Passed','Dead','Duplicate','Unresolved'];
+function updateConflict(r,u){return !!u&&!(r.status===u.status&&(r.applied||'')===u.applied)&&!(r.status===u.baseStatus&&(r.applied||'')===u.baseApplied)}
+function refreshLocalRoles(){
+  state={...canonicalState,roles:canonicalState.roles.map(r=>{
+    const u=personal[r.id]?.statusUpdate;
+    if(!u||updateConflict(r,u))return {...r};
+    const changed=r.status!==u.status||(r.applied||'')!==u.applied;
+    return {...r,status:u.status,applied:u.applied,...(changed?{nextAction:['Passed','Dead','Rejected','Duplicate'].includes(u.status)?'':'Status updated in this browser. Share updates to reconcile the tracker.',nextDue:''}:{})};
+  })};
+}
+function trackerUpdates(){
+  return {format:'job-hunt-user-updates-v1',canonicalVersion:canonicalState.meta?.version,exportedAt:new Date().toISOString(),instructions:'Reconcile these user-reported updates by r-id in the private tracker. Check both Gmail accounts for application confirmations. Missing email never disproves a user-reported submission. Planned resume choices are not proof of the resume submitted.',updates:canonicalState.roles.filter(r=>personal[r.id]).map(r=>({id:r.id,company:r.company,position:r.position,link:r.link,canonicalStatus:r.status,canonicalApplied:r.applied||'',...personal[r.id],conflict:updateConflict(r,personal[r.id].statusUpdate)}))};
+}
+function downloadJson(data,name){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+function exportUpdates(){downloadJson(trackerUpdates(),'job-hunt-updates.json')}
+async function copyUpdates(){
+  try{await navigator.clipboard.writeText('Please reconcile my dashboard updates and check application confirmations in both Gmail accounts:'+String.fromCharCode(10)+JSON.stringify(trackerUpdates(),null,2));document.querySelectorAll('[data-handoff-status]').forEach(el=>el.textContent='Copied. Paste this into ChatGPT or Claude.')}catch{document.querySelectorAll('[data-handoff-status]').forEach(el=>el.textContent='Copy unavailable. Use Export updates and attach the file here.')}
+}
+function handoffActions(){return '<div class="handoff-actions"><button type="button" data-copy-updates>Copy updates</button><button type="button" data-export-updates>Export updates</button><span data-handoff-status role="status" aria-live="polite"></span></div>'}
+function bindHandoff(root=document){root.querySelectorAll('[data-copy-updates]').forEach(el=>el.onclick=copyUpdates);root.querySelectorAll('[data-export-updates]').forEach(el=>el.onclick=exportUpdates)}
+function handoffBanner(){const n=Object.keys(personal).length;return n?'<div class="panel handoff-panel"><strong>'+n+' roles with saved browser edits</strong><p>Share your updates here or with Claude to update the shared tracker and check email confirmations. Changes stay in this browser until reconciled.</p>'+handoffActions()+'</div>':''}
 let view='dashboard',query='',appSort={key:'score',dir:-1},studioSort={key:'signal',dir:-1},materialSort={key:'applied',dir:-1};
 let promotedSources=new Set(readStoredSources());
 function readStoredSources(){try{const v=JSON.parse(localStorage.getItem('jobHuntPromotedSources')||'[]');return Array.isArray(v)?v:[]}catch{return []}}
@@ -16,6 +38,7 @@ async function loadPersonal(password){
       const v=JSON.parse(raw);if(v.v!==1)throw Error('version');
       const data=JSON.parse(dec.decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:b64(v.iv),additionalData:enc.encode(r.id)},personalKey,b64(v.ciphertext))));
       if(typeof data.notes!=='string'||typeof data.intendedResumeRef!=='string')throw Error('data');
+      if(data.statusUpdate&&(!ROLE_STATUSES.includes(data.statusUpdate.status)||typeof data.statusUpdate.applied!=='string'||!ROLE_STATUSES.includes(data.statusUpdate.baseStatus)||typeof data.statusUpdate.baseApplied!=='string'))throw Error('status');
       personal[r.id]=data;
     }catch{unreadPersonal.add(r.id)}
   }
@@ -44,26 +67,37 @@ function letterLinks(r){return documentLinks(docById('coverLetters',r.coverLette
 function resumeMappingLabel(r){const label=materialResumeLabel(r);return label?label+(r.resumeRef?' · Submitted / verified':' · Intended'):'Not mapped'}
 function personalEditor(r){
   const selected=intendedResumeRef(r),personalReadError=unreadPersonal.has(r.id);
-  return '<div class="field full personal-editor"><label for="intendedResume">Intended resume</label><select id="intendedResume"><option value="">No planned choice</option>'+(state.documents?.resumes||[]).map(d=>'<option value="'+esc(d.id)+'" '+(selected===d.id?'selected':'')+'>'+esc(d.name||d.id)+'</option>').join('')+'</select><p class="muted">Planned choice only. Submitted mappings stay verified in the private tracker.</p><label for="personalNotes">My notes</label><textarea id="personalNotes" rows="5" maxlength="20000" placeholder="Add your notes for this role…">'+esc(personal[r.id]?.notes||'')+'</textarea><p class="muted">Encrypted in this browser. Use Export data for a backup. These notes do not sync to the private tracker or another device.</p>'+(personalReadError?'<p class="local-warning">Some saved notes could not be read. Use the original access key/browser before saving over them.</p>':'')+'<button type="button" id="savePersonal">Save notes & resume choice</button><button type="button" id="exportPersonal">Export data & saved notes</button><span id="personalSaveStatus" role="status" aria-live="polite"></span></div>';
+  return '<div class="field full personal-editor"><label for="intendedResume">Intended resume</label><select id="intendedResume"><option value="">No planned choice</option>'+(state.documents?.resumes||[]).map(d=>'<option value="'+esc(d.id)+'" '+(selected===d.id?'selected':'')+'>'+esc(d.name||d.id)+'</option>').join('')+'</select><p class="muted">Planned choice only. Submitted mappings stay verified in the private tracker.</p><label for="personalNotes">My notes</label><textarea id="personalNotes" rows="5" maxlength="20000" placeholder="Add your notes for this role…">'+esc(personal[r.id]?.notes||'')+'</textarea><p class="muted">Encrypted in this browser. Use Export data for a backup. These notes do not sync to the private tracker or another device.</p>'+(personalReadError?'<p class="local-warning">Some saved notes could not be read. Use the original access key/browser before saving over them.</p>':'')+'<button type="button" id="savePersonal">Save my updates</button><button type="button" id="exportPersonal">Export data & saved notes</button><span id="personalSaveStatus" role="status" aria-live="polite"></span></div>';
+}
+function statusEditor(r){
+  const base=canonicalState.roles.find(x=>x.id===r.id),u=personal[r.id]?.statusUpdate;
+  const labels={Passed:'Passed — I no longer want to apply',Dead:'Posting closed / gone',Applied:'Applied — I submitted it'};
+  return '<div class="field full personal-editor"><label for="roleStatus">Update my status</label><select id="roleStatus"><option value="">Use shared tracker status ('+esc(base.status)+')</option>'+ROLE_STATUSES.map(s=>'<option value="'+esc(s)+'" '+(u?.status===s?'selected':'')+'>'+esc(labels[s]||s)+'</option>').join('')+'</select><label for="applicationDate">Application date (if known)</label><input type="date" id="applicationDate" value="'+esc(u?.applied??base.applied??'')+'"><p class="muted">Applied means you submitted it, including a referral. Passed means your decision; Posting closed means the employer stopped accepting applications.</p>'+(updateConflict(base,u)?'<p class="local-warning">The shared tracker changed since your edit. Its status is shown; review your choice before saving again.</p>':'')+'<p class="muted">Save below to update this browser immediately. Then Copy updates and paste here, or attach Export updates, for email checks and shared tracker reconciliation.</p>'+handoffActions()+'</div>';
 }
 function bindPersonalEditor(r){
   $('#exportPersonal').onclick=exportData;
+  bindHandoff($('#detailBody'));
   $('#savePersonal').onclick=async()=>{
     const button=$('#savePersonal'),status=$('#personalSaveStatus');button.disabled=true;
     try{
       const intendedResumeRef=$('#intendedResume').value;
       if(intendedResumeRef&&!docById('resumes',intendedResumeRef))throw Error('mapping');
-      await savePersonal(r.id,{notes:$('#personalNotes').value,intendedResumeRef,updatedAt:new Date().toISOString()});
-      render();$('#resumeMapping').textContent=resumeMappingLabel(r);$('#resumeLinks').innerHTML=resumeLinks(r);
+      const base=canonicalState.roles.find(x=>x.id===r.id),applied=$('#applicationDate').value;
+      const statusChoice=$('#roleStatus').value||(applied!==(base.applied||'')?base.status:'');
+      if(statusChoice&&!ROLE_STATUSES.includes(statusChoice))throw Error('status');
+      const statusUpdate=statusChoice?{status:statusChoice,applied,baseStatus:base.status,baseApplied:base.applied||'',recordedAt:new Date().toISOString()}:null;
+      await savePersonal(r.id,{notes:$('#personalNotes').value,intendedResumeRef,updatedAt:new Date().toISOString(),...(statusUpdate?{statusUpdate}:{})});
+      refreshLocalRoles();render();$('#resumeMapping').textContent=resumeMappingLabel(r);$('#resumeLinks').innerHTML=resumeLinks(r);
+      $('#detailStatus').textContent=state.roles.find(x=>x.id===r.id).status;$('#detailApplied').textContent=state.roles.find(x=>x.id===r.id).applied||'—';
+      $('#detailNextAction').textContent=state.roles.find(x=>x.id===r.id).nextAction||'—';
+      const breakdown=$('#detailBody .score-breakdown');if(breakdown)breakdown.hidden=state.roles.find(x=>x.id===r.id).status!=='Not applied';
       status.textContent='Saved in this browser.';
     }catch{status.textContent='Could not save. Keep this dialog open and copy your notes or try again.'}
     finally{button.disabled=false}
   };
 }
 function exportData(){
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([JSON.stringify({...state,browserLocal:{roles:personal,scope:'This browser only; intended choices are not submitted mappings'}},null,2)],{type:'application/json'}));
-  a.download='job-hunt-data.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  downloadJson({...canonicalState,browserLocal:{roles:personal,scope:'This browser only; intended choices and statuses need reconciliation'}},'job-hunt-data.json');
 }
 const $=s=>document.querySelector(s), enc=new TextEncoder(), dec=new TextDecoder();
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -198,7 +232,9 @@ async function unlock(pw){
     const r=await fetch(ENC_URL,{cache:'no-store'}); if(!r.ok)throw new Error('load');
     state=await decryptData(pw,await r.json());
     if(!Array.isArray(state.roles)||!Array.isArray(state.studios))throw new Error('data');
+    canonicalState=state;
     await loadPersonal(pw);
+    refreshLocalRoles();
     sessionStorage.setItem('jobHuntMagicKey',pw);
     $('#lockScreen').hidden=true;
     $('#appShell').hidden=false;
@@ -276,10 +312,10 @@ function studios(){
   return `<div class="source-toolbar"><div><strong>All sources</strong><span>Fresh matches and changed boards are pinned above.</span></div><label>Sort <select id="studioSort"><option value="signal" ${studioSort.key==='signal'?'selected':''}>New jobs / signal</option><option value="last" ${studioSort.key==='last'?'selected':''}>Last checked</option><option value="priority" ${studioSort.key==='priority'?'selected':''}>Priority</option><option value="company" ${studioSort.key==='company'?'selected':''}>Company</option><option value="status" ${studioSort.key==='status'?'selected':''}>Status</option></select></label><button id="studioSortDir" type="button">${studioSort.dir===-1?'Newest / highest first':'Oldest / lowest first'}</button></div>${hot.length?`<div class="panel hot-sources"><div class="panel-head"><div><div class="eyebrow">NEW JOBS & ACTION NEEDED</div><h2>Sources worth looking at now</h2></div><span class="muted">${hot.length} pinned</span></div><div class="studio-grid">${hot.map(s=>studioCard(s,true)).join('')}</div></div>`:''}<div class="panel-head all-source-head"><div><div class="eyebrow">ALL SOURCES</div><h2>${rows.length} studios / career boards</h2></div></div><div class="studio-grid">${rows.map(s=>studioCard(s,false)).join('')}</div>`;
 }
 function activity(){const rows=[...(state.activity||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''));return `<div class="panel"><div class="timeline">${rows.map(e=>`<div class="event"><div class="date">${esc(e.date)}</div><div class="actor">${esc(e.actor)}</div><div><strong>${esc(e.type||'Update')}</strong> ${esc(e.summary)}</div></div>`).join('')}</div></div>`}
-function openRole(id){const r=state.roles.find(x=>x.id===id);if(!r)return;const d=scoreDetails(r),showScore=r.status==='Not applied';$('#detailEyebrow').textContent=r.company;$('#detailTitle').textContent=r.position;$('#detailBody').innerHTML=`<div class="detail-grid"><div class="field"><label>Status</label>${esc(r.status)}</div><div class="field"><label>Fit</label>${esc(r.fit||'—')}</div><div class="field"><label>Team</label>${esc(r.team||'—')}</div><div class="field"><label>Location</label>${esc(r.location||'—')}</div><div class="field"><label>Salary</label>${esc(r.salary||'—')}</div><div class="field"><label>Applied</label>${esc(r.applied||'—')}</div>${showScore?`<div class="field full score-breakdown"><label>Opportunity Priority Score · ${d.total}/100</label><div class="score-grid"><span>Role Fit <b>${d.fit}/30</b></span><span>Compensation <b>${d.comp}/20</b></span><span>Career Value <b>${d.career}/15</b></span><span>Access & Signal <b>${d.access}/15</b></span><span>Geography <b>${d.geo}/10</b></span><span>Freshness & Liveness <b>${d.fresh}/10</b></span></div><p>${esc(d.compNote)} · ${esc(d.accessNote)} · ${esc(d.freshNote)}${d.mods.length?' · '+esc(d.mods.join(', ')):''}</p></div>`:''}<div class="field full materials-detail"><label>Application materials</label><div class="material-detail-row"><span>Resume</span><b id="resumeMapping">${esc(resumeMappingLabel(r))}</b></div><div id="resumeLinks">${resumeLinks(r)}</div><div class="material-detail-row"><span>Cover letter</span><b>${esc(materialLetterLabel(r)||'—')}</b></div>${letterLinks(r)}<p class="muted">Private library — GitHub sign-in required.</p></div>${personalEditor(r)}<div class="field full"><label>Next action</label>${esc(r.nextAction||'—')}</div>${r.referral?`<div class="field full"><label>Referral</label>${esc(r.referral)}</div>`:''}${r.recruiter?`<div class="field full"><label>Recruiter / contact</label>${esc(r.recruiter)}</div>`:''}<div class="field full"><label>Evidence</label>${esc(r.evidence||'—')}</div><div class="field full"><label>Tracker notes</label>${esc(r.notes||'—')}</div>${r.link?`<div class="field full"><label>Posting</label><a href="${esc(r.link)}" target="_blank" rel="noopener">Open posting ↗</a></div>`:''}</div>`;bindPersonalEditor(r);$('#detailDialog').showModal()}
+function openRole(id){const r=state.roles.find(x=>x.id===id);if(!r)return;const d=scoreDetails(r),showScore=r.status==='Not applied';$('#detailEyebrow').textContent=r.company;$('#detailTitle').textContent=r.position;$('#detailBody').innerHTML=`<div class="detail-grid"><div class="field"><label>Status</label><span id="detailStatus">${esc(r.status)}</span></div><div class="field"><label>Fit</label>${esc(r.fit||'—')}</div><div class="field"><label>Team</label>${esc(r.team||'—')}</div><div class="field"><label>Location</label>${esc(r.location||'—')}</div><div class="field"><label>Salary</label>${esc(r.salary||'—')}</div><div class="field"><label>Applied</label><span id="detailApplied">${esc(r.applied||'—')}</span></div>${showScore?`<div class="field full score-breakdown"><label>Opportunity Priority Score · ${d.total}/100</label><div class="score-grid"><span>Role Fit <b>${d.fit}/30</b></span><span>Compensation <b>${d.comp}/20</b></span><span>Career Value <b>${d.career}/15</b></span><span>Access & Signal <b>${d.access}/15</b></span><span>Geography <b>${d.geo}/10</b></span><span>Freshness & Liveness <b>${d.fresh}/10</b></span></div><p>${esc(d.compNote)} · ${esc(d.accessNote)} · ${esc(d.freshNote)}${d.mods.length?' · '+esc(d.mods.join(', ')):''}</p></div>`:''}<div class="field full materials-detail"><label>Application materials</label><div class="material-detail-row"><span>Resume</span><b id="resumeMapping">${esc(resumeMappingLabel(r))}</b></div><div id="resumeLinks">${resumeLinks(r)}</div><div class="material-detail-row"><span>Cover letter</span><b>${esc(materialLetterLabel(r)||'—')}</b></div>${letterLinks(r)}<p class="muted">Private library — GitHub sign-in required.</p></div>${statusEditor(r)}${personalEditor(r)}<div class="field full"><label>Next action</label><span id="detailNextAction">${esc(r.nextAction||'—')}</span></div>${r.referral?`<div class="field full"><label>Referral</label>${esc(r.referral)}</div>`:''}${r.recruiter?`<div class="field full"><label>Recruiter / contact</label>${esc(r.recruiter)}</div>`:''}<div class="field full"><label>Evidence</label>${esc(r.evidence||'—')}</div><div class="field full"><label>Tracker notes</label>${esc(r.notes||'—')}</div>${r.link?`<div class="field full"><label>Posting</label><a href="${esc(r.link)}" target="_blank" rel="noopener">Open posting ↗</a></div>`:''}</div>`;bindPersonalEditor(r);$('#detailDialog').showModal()}
 const titles={dashboard:['Dashboard','What matters now, across the entire search.'],priority:['Priority Queue','Verified opportunities you have not applied to.'],applications:['Applications','Evidence-backed application state across both inboxes.'],materials:['Materials','Exact resumes and cover letters tied to each role.'],studios:['Studio Sweep','The actual career boards — not just LinkedIn.'],activity:['Activity','What changed, who changed it, and why.']};
 function render(){
-  const t=titles[view];$('#viewTitle').textContent=t[0];$('#viewSub').textContent=t[1];$('#priorityBadge').textContent=priorityRoles().length;$('#syncMini').innerHTML=`<b>${esc(state.meta?.version||'1.0')}</b><br>${state.roles.length} roles · ${state.studios.length} studios`;$('#view').innerHTML=view==='dashboard'?dashboard():view==='priority'?priority():view==='applications'?applications():view==='materials'?materials():view==='studios'?studios():activity();
+  const t=titles[view];$('#viewTitle').textContent=t[0];$('#viewSub').textContent=t[1];$('#priorityBadge').textContent=priorityRoles().length;$('#syncMini').innerHTML=`<b>${esc(state.meta?.version||'1.0')}</b><br>${state.roles.length} roles · ${state.studios.length} studios`;$('#view').innerHTML=handoffBanner()+(view==='dashboard'?dashboard():view==='priority'?priority():view==='applications'?applications():view==='materials'?materials():view==='studios'?studios():activity());bindHandoff();
   document.querySelectorAll('[data-id],[data-role]').forEach(el=>el.onclick=e=>{if(e.target.closest('a,button,select,textarea'))return;openRole(el.dataset.id||el.dataset.role)});
   document.querySelectorAll('[data-app-sort]').forEach(el=>el.onclick=()=>{const k=el.dataset.appSort;if(appSort.key===k)appSort.dir*=-1;else{appSort={key:k,dir:(k==='company'||k==='position'||k==='status'||k==='fit'||k==='location'?1:-1)}}render()});
   document.querySelectorAll('[data-material-sort]').forEach(el=>el.onclick=()=>{const k=el.dataset.materialSort;if(materialSort.key===k)materialSort.dir*=-1;else materialSort={key:k,dir:(k==='company'||k==='position'||k==='status'||k==='resume'||k==='letter'?1:-1)};render()});
