@@ -2,23 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Job Hunt Command Center</title><meta name="theme-color" content="#11100f"><link rel="stylesheet" href="assets/styles.css?v=20261004b">
+<title>Job Hunt Command Center</title><meta name="theme-color" content="#11100f"><link rel="stylesheet" href="assets/styles.css?v=magic-20261004">
 </head>
 <body>
 <div id="lockScreen" class="lock-screen">
-  <form id="unlockForm" class="lock-card" onsubmit="event.preventDefault();if(window.jobUnlock){window.jobUnlock()}else{document.getElementById('unlockError').textContent='Dashboard script did not load. Refresh the page.'}">
+  <div class="lock-card">
     <div class="lock-mark">AN</div>
     <div class="eyebrow">PRIVATE DASHBOARD</div>
     <h1>Job Hunt Command Center</h1>
-    <p>Enter the dashboard password. Your job-search data is decrypted locally in this browser.</p>
-    <label for="passwordInput">Password</label>
-    <div class="password-wrap">
-      <input id="passwordInput" type="password" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" required autofocus>
-      <button id="passwordToggle" class="password-toggle" type="button" aria-label="Show password" aria-pressed="false" onclick="const i=document.getElementById('passwordInput');const show=i.type==='password';i.type=show?'text':'password';this.textContent=show?'Hide':'Show';this.setAttribute('aria-pressed',String(show));i.focus();">Show</button>
-    </div>
-    <button class="primary" type="submit" id="unlockBtn">Unlock</button>
+    <p id="accessMessage">Opening your private dashboard…</p>
     <div id="unlockError" class="lock-error" aria-live="polite"></div>
-  </form>
+  </div>
 </div>
 <div class="app-shell" id="appShell" hidden>
 <aside class="sidebar"><div class="brand"><div class="mark">AN</div><div><strong>Job Hunt</strong><span>Command Center</span></div></div>
@@ -33,5 +27,5 @@
 <main><header class="topbar"><div><h1 id="viewTitle">Dashboard</h1><p id="viewSub">The job search, without the LinkedIn blind spots.</p></div><div class="top-actions"><div class="searchbox">⌕ <input id="globalSearch" placeholder="Search roles, companies, studios…"></div><button id="lockBtn" title="Lock dashboard">🔒</button><button id="themeBtn" title="Toggle theme">◐</button></div></header>
 <section id="view"></section></main></div>
 <dialog id="detailDialog"><form method="dialog" class="dialog-card"><div class="dialog-head"><div><div class="eyebrow" id="detailEyebrow"></div><h2 id="detailTitle"></h2></div><button class="icon-btn" value="cancel">×</button></div><div id="detailBody"></div></form></dialog>
-<script src="assets/app.js?v=20261004b"></script><!-- deploy 2026-10-04 mobile-unlock-b -->
+<script src="assets/app.js?v=magic-20261004"></script><!-- deploy 2026-10-04 mobile-unlock-b -->
 </body></html>
