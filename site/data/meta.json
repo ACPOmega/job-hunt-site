@@ -1,0 +1,1 @@
+{"v":2,"alg":"AES-256-GCM","kdf":"PBKDF2-SHA256","iterations":250000,"salt":"qawTIz9Q+CHz0XFimsD48g==","iv":"f6Ikx1siGRGT3f9/","chunkCount":16,"chunkPattern":"data/chunks/c{index:02d}.txt"}
