@@ -40,3 +40,28 @@ button.primary{background:var(--purple)!important;color:#fff!important;border-co
 .active-panel{border-top:3px solid var(--green);margin-bottom:14px}
 .priority-active{margin-bottom:14px}
 @media(max-width:720px){.score{min-width:62px}.score b{font-size:16px}.score span{font-size:7px}.score-grid{grid-template-columns:1fr}}
+
+/* source triage + sorting */
+th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
+th.sortable:hover{color:var(--text);background:var(--panel2)}
+.table-score{color:var(--gold);font-size:12px}
+.source-toolbar{position:sticky;top:84px;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:color-mix(in srgb,var(--bg) 94%,transparent);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:12px}
+.source-toolbar>div{display:flex;flex-direction:column;gap:2px}.source-toolbar span{font-size:10px;color:var(--muted)}
+.source-toolbar label{margin-left:auto;font-size:10px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.source-toolbar select,.source-toolbar button{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:8px;padding:7px 9px;font:inherit;font-size:11px}
+.hot-sources{border-top:3px solid var(--gold);margin-bottom:18px}.studio-hot{border-color:color-mix(in srgb,var(--gold) 35%,var(--line))}
+.all-source-head{margin-top:4px}
+.studio-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0 5px}
+.studio-actions a,.source-actions a{font-size:11px;color:var(--purple);text-decoration:none}
+.studio-actions button,.source-actions button{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:7px;padding:6px 8px;font-size:10px;font-weight:800}
+.studio-actions button.promoted{border-color:color-mix(in srgb,var(--green) 50%,var(--line));color:var(--green)}
+.source-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:9px}
+.source-lead{border-left:3px solid var(--gold)}
+.source-board-panel{border-top:3px solid var(--gold);margin-bottom:14px}
+@media(max-width:720px){
+  .source-toolbar{top:112px;align-items:stretch}
+  .source-toolbar label{margin-left:0;justify-content:space-between}
+  .source-toolbar select{flex:1;min-width:0}
+  .source-toolbar button{width:100%}
+  th.sortable{padding-right:16px}
+}
