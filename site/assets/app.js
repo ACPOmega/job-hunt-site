@@ -11,9 +11,9 @@ function badge(t,c=''){return `<span class="badge ${c}">${esc(t)}</span>`}
 function statusBadge(s){return badge(s,'s-'+slug(s))}
 function fitBadge(s){return s?badge(s,'b-'+slug(s)):''}
 function age(d){if(!d)return '—';const a=new Date(d+'T12:00:00'),b=new Date();b.setHours(12,0,0,0);return Math.max(0,Math.floor((b-a)/86400000))+'d'}
-const TARGET_COMP=Number(state.meta?.targetComp||185000),CONTRACT_PARITY=Number(state.meta?.contractParityHourly||88.94);
 function moneyValues(s){return (String(s||'').match(/\$\s?[\d,.]+/g)||[]).map(x=>Number(x.replace(/[$,\s]/g,''))).filter(Number.isFinite)}
 function scoreDetails(r){
+  const TARGET_COMP=Number(state.meta?.targetComp||185000),CONTRACT_PARITY=Number(state.meta?.contractParityHourly||88.94);
   const fitMap={Strong:30,Good:24,Moderate:20,Possible:16,Fair:14,Stretch:10,Weak:4};
   const fit=fitMap[r.fit]??12;
 
@@ -49,12 +49,12 @@ function scoreDetails(r){
   else if(String(r.recruiter||'').trim()){access=12;accessNote='Known recruiter / human path'}
   else if(/inbound|referral/i.test(String(r.via||''))){access=11;accessNote='Warm or inbound path'}
 
-  const geoMap={'Remote':10,'Remote US':10,'Seattle area':10,'Washington':10,'California':8,'Domestic':7,'TBD':5,'Unknown':5,'Elsewhere':2,'Canada':1,'Europe':1};
-  const geo=geoMap[r.geo]??(/remote/i.test(String(r.location||''))?10:/seattle|redmond|bellevue|renton/i.test(String(r.location||''))?10:/\bCA\b|california|los angeles|san diego|san mateo|irvine|culver city|santa monica/i.test(String(r.location||''))?8:5);
+  const geoMap={'Remote':10,'Remote US':10,'Seattle area':10,'Washington':10,'California':10,'Domestic':7,'TBD':5,'Unknown':5,'Elsewhere':2,'Canada':1,'Europe':1};
+  const geo=geoMap[r.geo]??(/remote/i.test(String(r.location||''))?10:/seattle|redmond|bellevue|renton/i.test(String(r.location||''))?10:/\bCA\b|california|los angeles|san diego|san mateo|irvine|culver city|santa monica/i.test(String(r.location||''))?10:5);
 
   let fresh=5,freshNote='Age unknown';
   const blob=[r.evidence,r.notes].join(' ');
-  const iso=blob.match(/(?:first[_ ]published|published|posted(?:Date)?)[^\d]*(2026-\d{2}-\d{2})/i);
+  const iso=blob.match(/(?:first[_ ]published|published|posted(?:Date)?)[^\d]*(20\d{2}-\d{2}-\d{2})/i);
   if(iso){
     const now=new Date();now.setHours(12,0,0,0);const ageDays=Math.max(0,Math.floor((now-new Date(iso[1]+'T12:00:00'))/86400000));
     fresh=ageDays<=7?10:ageDays<=14?9:ageDays<=30?7:ageDays<=45?5:ageDays<=90?3:1;
