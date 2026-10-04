@@ -19,14 +19,20 @@ async function decryptData(password,payload){
   return JSON.parse(dec.decode(plain));
 }
 async function unlock(pw){
-  $('#unlockError').textContent=''; $('#unlockBtn').disabled=true; $('#unlockBtn').textContent='Unlocking…';
+  $('#unlockError').textContent='';
   try{
     const r=await fetch(ENC_URL,{cache:'no-store'}); if(!r.ok)throw new Error('load');
     state=await decryptData(pw,await r.json());
     if(!Array.isArray(state.roles)||!Array.isArray(state.studios))throw new Error('data');
-    $('#lockScreen').hidden=true;$('#appShell').hidden=false;bind();render();
-  }catch(e){$('#unlockError').textContent='Wrong password, or the dashboard data could not be loaded.';}
-  finally{$('#unlockBtn').disabled=false;$('#unlockBtn').textContent='Unlock';}
+    $('#lockScreen').hidden=true;
+    $('#appShell').hidden=false;
+    history.replaceState(null,'',location.pathname+location.search);
+    bind();
+    render();
+  }catch(e){
+    $('#accessMessage').textContent='Could not open the private dashboard.';
+    $('#unlockError').textContent='This access link is invalid or the encrypted data could not be loaded.';
+  }
 }
 function bind(){
   document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{view=b.dataset.view;document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('active',x===b));render()});
