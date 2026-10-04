@@ -36,13 +36,9 @@ function scoreDetails(r){
     }
   }else if(/not posted|not stated|not disclosed|unknown/i.test(String(r.salary||''))){comp=8;compNote='Comp not posted'}
 
-  const title=String(r.position||'').toLowerCase();
   const track=String(r.track||'');
-  let career=track==='Target'?10:track==='Bridge'?5:track==='Stretch'?7:track==='Pass'||track==='Closed'?0:7;
-  if(/head|vice president|\bvp\b|executive producer|director/.test(title))career+=5;
-  else if(/principal|staff|lead/.test(title))career+=4;
-  else if(/senior/.test(title))career+=2;
-  career=Math.min(15,career);
+  // Title seniority deliberately does not affect the score; only the track does.
+  const career=track==='Target'?15:track==='Bridge'?8:track==='Pass'||track==='Closed'?0:11;
 
   let access=4,accessNote='Cold application';
   if(String(r.referral||'').trim()){access=15;accessNote='Referral / internal advocate'}
